@@ -638,6 +638,14 @@ impl Tensor {
         result.copy_(&self);
         result
     }
+
+    pub fn f_swish(&self) -> Result<Tensor, TchError> {
+        Ok(self * self.f_sigmoid()?)
+    }
+
+    pub fn swish(&self) -> Tensor {
+        self.f_swish().unwrap()
+    }
 }
 
 impl std::iter::Sum for Tensor {
