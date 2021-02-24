@@ -6,18 +6,198 @@
 // On Linux, the TORCH_CUDA_VERSION environment variable can be used,
 // like 9.0, 90, or cu90 to specify the version of CUDA to use for libtorch.
 
-use std::env;
-use std::fs;
-use std::io;
-use std::io::Write;
-use std::path::{Path, PathBuf};
-
+use anyhow::{bail, Result};
 use cmake::Config;
 use curl::easy::Easy;
+use serde::{de::Error as _, Deserialize, Deserializer};
+use std::{
+    fs, io,
+    io::Write,
+    path::{Path, PathBuf},
+};
+
+use env_config::*;
 
 const TORCH_VERSION: &str = "1.7.0";
+const RETURN_ENV_VARS: [&str; 4] = [
+    "TORCH_CUDA_VERSION",
+    "LIBTORCH",
+    "LIBTORCH_CXX11_ABI",
+    "LIBTORCH_USE_CMAKE",
+];
 
-fn download<P: AsRef<Path>>(source_url: &str, target_file: P) -> anyhow::Result<()> {
+mod env_config {
+    use super::*;
+
+    #[derive(Debug, Clone, Deserialize)]
+    pub struct EnvConfig {
+        #[serde(default = "default_torch_cuda_version")]
+        pub torch_cuda_version: CudaVersion,
+        pub libtorch: Option<PathBuf>,
+        #[serde(
+            deserialize_with = "deserialize_bool",
+            default = "default_libtorch_cxx11_abi"
+        )]
+        pub libtorch_cxx11_abi: bool,
+        #[serde(
+            deserialize_with = "deserialize_bool",
+            default = "default_libtorch_use_cmake"
+        )]
+        pub libtorch_use_cmake: bool,
+        pub cargo_cfg_target_os: Os,
+        pub out_dir: PathBuf,
+        pub target: String,
+    }
+
+    #[derive(Debug, Clone, Copy, Deserialize)]
+    pub enum CudaVersion {
+        #[serde(rename = "cpu")]
+        Cpu,
+        #[serde(rename = "cu92")]
+        Cu92,
+        #[serde(rename = "cu101")]
+        Cu101,
+        #[serde(rename = "cu110")]
+        Cu110,
+    }
+
+    impl CudaVersion {
+        pub fn as_str(&self) -> &str {
+            match self {
+                Self::Cpu => "cpu",
+                Self::Cu92 => "cpu92",
+                Self::Cu101 => "cpu101",
+                Self::Cu110 => "cpu110",
+            }
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum Os {
+        Linux,
+        MacOs,
+        Windows,
+        Other(String),
+    }
+
+    impl<'de> Deserialize<'de> for Os {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let text = String::deserialize(deserializer)?;
+
+            let os = match text.as_str() {
+                "linux" => Os::Linux,
+                "macos" => Os::MacOs,
+                "windows" => Os::Windows,
+                _ => Os::Other(text),
+            };
+            Ok(os)
+        }
+    }
+
+    fn deserialize_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let text = String::deserialize(deserializer)?;
+        let value = match text.as_str() {
+            "1" => true,
+            "0" => false,
+            _ => {
+                return Err(D::Error::custom(format!(
+                    "expect 0 or 1, but get '{}'",
+                    text
+                )))
+            }
+        };
+        Ok(value)
+    }
+
+    fn default_torch_cuda_version() -> CudaVersion {
+        CudaVersion::Cpu
+    }
+
+    fn default_libtorch_cxx11_abi() -> bool {
+        true
+    }
+
+    fn default_libtorch_use_cmake() -> bool {
+        false
+    }
+}
+
+fn main() -> Result<()> {
+    // load environment variables
+    let config: EnvConfig = envy::from_env()?;
+    eprintln!("=== environment variables ===");
+    eprintln!("{:#?}", config);
+
+    // skip build if doc only mode
+    if cfg!(feature = "doc-only") {
+        return Ok(());
+    }
+
+    // prepare libtorch directory
+    let libtorch = prepare_libtorch_dir(&config)?;
+
+    // detect cuda and hip
+    // use_cuda is a hacky way to detect whether cuda is available and
+    // if it's the case link to it by explicitly depending on a symbol
+    // from the torch_cuda library.
+    // It would be better to use -Wl,--no-as-needed but there is no way
+    // to specify arbitrary linker flags at the moment.
+    //
+    // Once https://github.com/rust-lang/cargo/pull/8441 is available
+    // we should switch to using rustc-link-arg instead e.g. with the
+    // following flags:
+    //   -Wl,--no-as-needed -Wl,--copy-dt-needed-entries -ltorch
+    //
+    // This will be available starting from cargo 1.50 but will be a nightly
+    // only option to start with.
+    // https://github.com/rust-lang/cargo/blob/master/CHANGELOG.md
+    let use_cuda = detect_cuda(&config, &libtorch);
+    let use_hip = detect_hip(&config, &libtorch);
+
+    // build ffi library
+    if config.libtorch_use_cmake {
+        cmake(&libtorch)?;
+    } else {
+        make(&config, &libtorch, use_cuda, use_hip)?;
+    }
+
+    // add environment variables re-run guards
+    RETURN_ENV_VARS.iter().for_each(|name| {
+        println!("cargo:rerun-if-env-changed={}", name);
+    });
+
+    // add link search path
+    println!(
+        "cargo:rustc-link-search=native={}",
+        libtorch.join("lib").display()
+    );
+
+    // link libraries
+    println!("cargo:rustc-link-lib=static=tch");
+    println!("cargo:rustc-link-lib=torch");
+    println!("cargo:rustc-link-lib=torch_cpu");
+    println!("cargo:rustc-link-lib=c10");
+    if use_cuda {
+        println!("cargo:rustc-link-lib=torch_cuda");
+    }
+    if use_hip {
+        println!("cargo:rustc-link-lib=torch_hip");
+        println!("cargo:rustc-link-lib=c10_hip");
+    }
+    if !config.target.contains("msvc") && !config.target.contains("apple") {
+        println!("cargo:rustc-link-lib=gomp");
+    }
+
+    Ok(())
+}
+
+fn download(source_url: &str, target_file: impl AsRef<Path>) -> Result<()> {
     let f = fs::File::create(&target_file)?;
     let mut writer = io::BufWriter::new(f);
     let mut easy = Easy::new();
@@ -28,15 +208,15 @@ fn download<P: AsRef<Path>>(source_url: &str, target_file: P) -> anyhow::Result<
     if response_code == 200 {
         Ok(())
     } else {
-        Err(anyhow::anyhow!(
+        bail!(
             "Unexpected response code {} for {}",
             response_code,
             source_url
-        ))
+        )
     }
 }
 
-fn extract<P: AsRef<Path>>(filename: P, outpath: P) -> anyhow::Result<()> {
+fn extract(filename: impl AsRef<Path>, outpath: impl AsRef<Path>) -> Result<()> {
     let file = fs::File::open(&filename)?;
     let buf = io::BufReader::new(file);
     let mut archive = zip::ZipArchive::new(buf)?;
@@ -63,80 +243,49 @@ fn extract<P: AsRef<Path>>(filename: P, outpath: P) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn env_var_rerun(name: &str) -> Result<String, env::VarError> {
-    println!("cargo:rerun-if-env-changed={}", name);
-    env::var(name)
-}
+fn prepare_libtorch_dir(config: &EnvConfig) -> Result<PathBuf> {
+    let libtorch_dir = match &config.libtorch {
+        Some(path) => path.to_owned(),
+        None => {
+            let libtorch_dir = config.out_dir.join("libtorch");
+            if !libtorch_dir.exists() {
+                fs::create_dir(&libtorch_dir).unwrap_or_default();
+                let device = config.torch_cuda_version.as_str();
+                let libtorch_url = match config.cargo_cfg_target_os {
+                    Os::Linux => format!(
+                        "https://download.pytorch.org/libtorch/{}/libtorch-cxx11-abi-shared-with-deps-{}%2B{}.zip",
+                        device, TORCH_VERSION, device
+                    ),
+                    Os::MacOs => format!(
+                        "https://download.pytorch.org/libtorch/cpu/libtorch-macos-{}.zip",
+                        TORCH_VERSION
+                    ),
+                    Os::Windows => format!(
+                        "https://download.pytorch.org/libtorch/{}/libtorch-win-shared-with-deps-{}%2B{}.zip",
+                        device, TORCH_VERSION, device
+                    ),
+                    _ => bail!("Unsupported OS"),
+                };
 
-fn prepare_libtorch_dir() -> PathBuf {
-    let os = env::var("CARGO_CFG_TARGET_OS").expect("Unable to get TARGET_OS");
+                let filename = libtorch_dir.join(format!("v{}.zip", TORCH_VERSION));
+                download(&libtorch_url, &filename)?;
+                extract(&filename, &libtorch_dir)?;
+            }
 
-    let device = match env_var_rerun("TORCH_CUDA_VERSION") {
-        Ok(cuda_env) => match os.as_str() {
-            "linux" | "windows" => cuda_env
-                .trim()
-                .to_lowercase()
-                .trim_start_matches("cu")
-                .split('.')
-                .take(2)
-                .fold("cu".to_string(), |mut acc, curr| {
-                    acc += curr;
-                    acc
-                }),
-            os_str => panic!(
-                "CUDA was specified with `TORCH_CUDA_VERSION`, but pre-built \
-                 binaries with CUDA are only available for Linux and Windows, not: {}.",
-                os_str
-            ),
-        },
-        Err(_) => "cpu".to_string(),
+            libtorch_dir.join("libtorch")
+        }
     };
 
-    if let Ok(libtorch) = env_var_rerun("LIBTORCH") {
-        PathBuf::from(libtorch)
-    } else {
-        let libtorch_dir = PathBuf::from(env::var("OUT_DIR").unwrap()).join("libtorch");
-        if !libtorch_dir.exists() {
-            fs::create_dir(&libtorch_dir).unwrap_or_default();
-            let libtorch_url = match os.as_str() {
-                "linux" => format!(
-                    "https://download.pytorch.org/libtorch/{}/libtorch-cxx11-abi-shared-with-deps-{}{}.zip",
-                    device, TORCH_VERSION, match device.as_ref() {
-                        "cpu" => "%2Bcpu",
-                        "cu92" => "%2Bcu92",
-                        "cu101" => "%2Bcu101",
-                        "cu110" => "%2Bcu110",
-                        _ => ""
-                    }
-                ),
-                "macos" => format!(
-                    "https://download.pytorch.org/libtorch/cpu/libtorch-macos-{}.zip",
-                    TORCH_VERSION
-                ),
-                "windows" => format!(
-                    "https://download.pytorch.org/libtorch/{}/libtorch-win-shared-with-deps-{}{}.zip",
-                    device, TORCH_VERSION, match device.as_ref() {
-                        "cpu" => "%2Bcpu",
-                        "cu92" => "%2Bcu92",
-                        "cu101" => "%2Bcu101",
-                        "cu110" => "%2Bcu110",
-                        _ => ""
-                    }),
-                _ => panic!("Unsupported OS"),
-            };
-
-            let filename = libtorch_dir.join(format!("v{}.zip", TORCH_VERSION));
-            download(&libtorch_url, &filename).unwrap();
-            extract(&filename, &libtorch_dir).unwrap();
-        }
-
-        libtorch_dir.join("libtorch")
-    }
+    Ok(libtorch_dir)
 }
 
-fn make<P: AsRef<Path>>(libtorch: P, use_cuda: bool, use_hip: bool) {
-    let os = env::var("CARGO_CFG_TARGET_OS").expect("Unable to get TARGET_OS");
-
+fn make(
+    config: &EnvConfig,
+    libtorch: impl AsRef<Path>,
+    use_cuda: bool,
+    use_hip: bool,
+) -> Result<()> {
+    let libtorch = libtorch.as_ref();
     let cuda_dependency = if use_cuda || use_hip {
         "libtch/dummy_cuda_dependency.cpp"
     } else {
@@ -149,27 +298,25 @@ fn make<P: AsRef<Path>>(libtorch: P, use_cuda: bool, use_hip: bool) {
     println!("cargo:rerun-if-changed=libtch/stb_image_write.h");
     println!("cargo:rerun-if-changed=libtch/stb_image_resize.h");
     println!("cargo:rerun-if-changed=libtch/stb_image.h");
-    match os.as_str() {
-        "linux" | "macos" => {
-            let libtorch_cxx11_abi =
-                env_var_rerun("LIBTORCH_CXX11_ABI").unwrap_or_else(|_| "1".to_string());
+    match &config.cargo_cfg_target_os {
+        Os::Linux | Os::MacOs => {
             cc::Build::new()
                 .cpp(true)
                 .pic(true)
                 .warnings(false)
-                .include(libtorch.as_ref().join("include"))
-                .include(libtorch.as_ref().join("include/torch/csrc/api/include"))
-                .flag(&format!(
-                    "-Wl,-rpath={}",
-                    libtorch.as_ref().join("lib").display()
-                ))
+                .include(libtorch.join("include"))
+                .include(libtorch.join("include/torch/csrc/api/include"))
+                .flag(&format!("-Wl,-rpath={}", libtorch.join("lib").display()))
                 .flag("-std=c++14")
-                .flag(&format!("-D_GLIBCXX_USE_CXX11_ABI={}", libtorch_cxx11_abi))
+                .flag(&format!(
+                    "-D_GLIBCXX_USE_CXX11_ABI={}",
+                    if config.libtorch_cxx11_abi { "1" } else { "0" }
+                ))
                 .file("libtch/torch_api.cpp")
                 .file(cuda_dependency)
                 .compile("tch");
         }
-        "windows" => {
+        Os::Windows => {
             // TODO: Pass "/link" "LIBPATH:{}" to cl.exe in order to emulate rpath.
             //       Not yet supported by cc=rs.
             //       https://github.com/alexcrichton/cc-rs/issues/323
@@ -177,17 +324,19 @@ fn make<P: AsRef<Path>>(libtorch: P, use_cuda: bool, use_hip: bool) {
                 .cpp(true)
                 .pic(true)
                 .warnings(false)
-                .include(libtorch.as_ref().join("include"))
-                .include(libtorch.as_ref().join("include/torch/csrc/api/include"))
+                .include(libtorch.join("include"))
+                .include(libtorch.join("include/torch/csrc/api/include"))
                 .file("libtch/torch_api.cpp")
                 .file(cuda_dependency)
                 .compile("tch");
         }
-        _ => panic!("Unsupported OS"),
+        Os::Other(name) => bail!("Unsupported OS {}", name),
     };
+
+    Ok(())
 }
 
-fn cmake<P: AsRef<Path>>(libtorch: P) {
+fn cmake(libtorch: impl AsRef<Path>) -> Result<()> {
     let dst = Config::new("libtch")
         .define("CMAKE_PREFIX_PATH", libtorch.as_ref())
         .build();
@@ -195,58 +344,26 @@ fn cmake<P: AsRef<Path>>(libtorch: P) {
     println!("cargo:rustc-link-search=native={}", dst.display());
     println!("cargo:rustc-link-lib=static=tch");
     println!("cargo:rustc-link-lib=stdc++");
+
+    Ok(())
 }
 
-fn main() {
-    if !cfg!(feature = "doc-only") {
-        let libtorch = prepare_libtorch_dir();
-        // use_cuda is a hacky way to detect whether cuda is available and
-        // if it's the case link to it by explicitly depending on a symbol
-        // from the torch_cuda library.
-        // It would be better to use -Wl,--no-as-needed but there is no way
-        // to specify arbitrary linker flags at the moment.
-        //
-        // Once https://github.com/rust-lang/cargo/pull/8441 is available
-        // we should switch to using rustc-link-arg instead e.g. with the
-        // following flags:
-        //   -Wl,--no-as-needed -Wl,--copy-dt-needed-entries -ltorch
-        //
-        // This will be available starting from cargo 1.50 but will be a nightly
-        // only option to start with.
-        // https://github.com/rust-lang/cargo/blob/master/CHANGELOG.md
-        let use_cuda = libtorch.join("lib").join("libtorch_cuda.so").exists()
-            || libtorch.join("lib").join("torch_cuda.dll").exists();
-        let use_hip = libtorch.join("lib").join("libtorch_hip.so").exists()
-            || libtorch.join("lib").join("torch_hip.dll").exists();
-        println!(
-            "cargo:rustc-link-search=native={}",
-            libtorch.join("lib").display()
-        );
+fn detect_cuda(config: &EnvConfig, libtorch: impl AsRef<Path>) -> bool {
+    let libtorch = libtorch.as_ref();
 
-        if env_var_rerun("LIBTORCH_USE_CMAKE").is_ok() {
-            cmake(&libtorch)
-        } else {
-            make(&libtorch, use_cuda, use_hip)
-        }
+    match config.cargo_cfg_target_os {
+        Os::Linux => libtorch.join("lib").join("libtorch_cuda.so").exists(),
+        Os::Windows => libtorch.join("lib").join("torch_cuda.dll").exists(),
+        Os::MacOs | Os::Other(_) => false,
+    }
+}
 
-        println!("cargo:rustc-link-lib=static=tch");
-        if use_cuda {
-            println!("cargo:rustc-link-lib=torch_cuda");
-        }
-        if use_hip {
-            println!("cargo:rustc-link-lib=torch_hip");
-        }
-        println!("cargo:rustc-link-lib=torch");
-        println!("cargo:rustc-link-lib=torch_cpu");
-        println!("cargo:rustc-link-lib=c10");
-        if use_hip {
-            println!("cargo:rustc-link-lib=c10_hip");
-        }
+fn detect_hip(config: &EnvConfig, libtorch: impl AsRef<Path>) -> bool {
+    let libtorch = libtorch.as_ref();
 
-        let target = env::var("TARGET").unwrap();
-
-        if !target.contains("msvc") && !target.contains("apple") {
-            println!("cargo:rustc-link-lib=gomp");
-        }
+    match config.cargo_cfg_target_os {
+        Os::Linux => libtorch.join("lib").join("libtorch_hip.so").exists(),
+        Os::Windows => libtorch.join("lib").join("torch_hip.dll").exists(),
+        Os::MacOs | Os::Other(_) => false,
     }
 }

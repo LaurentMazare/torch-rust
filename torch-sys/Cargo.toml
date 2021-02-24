@@ -20,6 +20,8 @@ anyhow = "1.0"
 cc = "1.0"
 cmake = "0.1"
 curl = "0.4.9"
+envy = "0.4.2"
+serde = { version = "1.0.120", features = ["derive"] }
 zip = "0.5"
 
 [features]
