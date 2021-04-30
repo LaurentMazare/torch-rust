@@ -13,7 +13,6 @@ fn grad_example() {
 }
 
 fn main() {
-    tch::maybe_init_cuda();
     let t = Tensor::of_slice(&[3, 1, 4, 1, 5]);
     t.print();
     let t = Tensor::randn(&[5, 4], kind::FLOAT_CPU);

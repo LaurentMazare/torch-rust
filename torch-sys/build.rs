@@ -146,14 +146,8 @@ fn prepare_libtorch_dir() -> PathBuf {
     }
 }
 
-fn make<P: AsRef<Path>>(libtorch: P, use_cuda: bool, use_hip: bool) {
+fn make<P: AsRef<Path>>(libtorch: P) {
     let os = env::var("CARGO_CFG_TARGET_OS").expect("Unable to get TARGET_OS");
-
-    let cuda_dependency = if use_cuda || use_hip {
-        "libtch/dummy_cuda_dependency.cpp"
-    } else {
-        "libtch/fake_cuda_dependency.cpp"
-    };
     println!("cargo:rerun-if-changed=libtch/torch_api.cpp");
     println!("cargo:rerun-if-changed=libtch/torch_api.h");
     println!("cargo:rerun-if-changed=libtch/torch_api_generated.cpp.h");
@@ -178,7 +172,6 @@ fn make<P: AsRef<Path>>(libtorch: P, use_cuda: bool, use_hip: bool) {
                 .flag("-std=c++14")
                 .flag(&format!("-D_GLIBCXX_USE_CXX11_ABI={}", libtorch_cxx11_abi))
                 .file("libtch/torch_api.cpp")
-                .file(cuda_dependency)
                 .compile("tch");
         }
         "windows" => {
@@ -192,7 +185,6 @@ fn make<P: AsRef<Path>>(libtorch: P, use_cuda: bool, use_hip: bool) {
                 .include(libtorch.as_ref().join("include"))
                 .include(libtorch.as_ref().join("include/torch/csrc/api/include"))
                 .file("libtch/torch_api.cpp")
-                .file(cuda_dependency)
                 .compile("tch");
         }
         _ => panic!("Unsupported OS"),
@@ -202,20 +194,6 @@ fn make<P: AsRef<Path>>(libtorch: P, use_cuda: bool, use_hip: bool) {
 fn main() {
     if !cfg!(feature = "doc-only") {
         let libtorch = prepare_libtorch_dir();
-        // use_cuda is a hacky way to detect whether cuda is available and
-        // if it's the case link to it by explicitly depending on a symbol
-        // from the torch_cuda library.
-        // It would be better to use -Wl,--no-as-needed but there is no way
-        // to specify arbitrary linker flags at the moment.
-        //
-        // Once https://github.com/rust-lang/cargo/pull/8441 is available
-        // we should switch to using rustc-link-arg instead e.g. with the
-        // following flags:
-        //   -Wl,--no-as-needed -Wl,--copy-dt-needed-entries -ltorch
-        //
-        // This will be available starting from cargo 1.50 but will be a nightly
-        // only option to start with.
-        // https://github.com/rust-lang/cargo/blob/master/CHANGELOG.md
         let use_cuda = libtorch.join("lib").join("libtorch_cuda.so").exists()
             || libtorch.join("lib").join("torch_cuda.dll").exists();
         let use_cuda_cu = libtorch.join("lib").join("libtorch_cuda_cu.so").exists()
@@ -229,8 +207,11 @@ fn main() {
             libtorch.join("lib").display()
         );
 
-        make(&libtorch, use_cuda, use_hip);
+        make(&libtorch);
 
+        // PyTorch uses two separate library for the cpu bits and the cuda bits.
+        // The following flags ensure that the linker does not remove the
+        // cuda dependencies.
         println!("cargo:rustc-link-lib=static=tch");
         if use_cuda {
             println!("cargo:rustc-link-lib=torch_cuda");
@@ -244,7 +225,9 @@ fn main() {
         if use_hip {
             println!("cargo:rustc-link-lib=torch_hip");
         }
-        println!("cargo:rustc-link-lib=torch");
+        println!("cargo:rustc-link-arg=-Wl,--no-as-needed");
+        println!("cargo:rustc-link-arg=-Wl,--copy-dt-needed-entries");
+        println!("cargo:rustc-link-arg=-ltorch");
         println!("cargo:rustc-link-lib=torch_cpu");
         println!("cargo:rustc-link-lib=c10");
         if use_hip {
