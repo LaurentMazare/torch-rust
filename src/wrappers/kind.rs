@@ -3,6 +3,8 @@
 use half::f16;
 
 /// The different kind of elements that a Tensor can hold.
+///
+/// [Element] can be used for a value of a specific kind.
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Kind {
@@ -99,42 +101,47 @@ pub const FLOAT_CUDA: (Kind, crate::Device) = (Kind::Float, crate::Device::Cuda(
 pub const DOUBLE_CUDA: (Kind, crate::Device) = (Kind::Double, crate::Device::Cuda(0));
 pub const INT64_CUDA: (Kind, crate::Device) = (Kind::Int64, crate::Device::Cuda(0));
 
-pub trait Element {
+/// Single element of a specific [Kind].
+///
+/// # Implementation
+///
+/// The size of the type should be the same as corresponding [Kind::elt_size_in_bytes]
+pub unsafe trait Element: Copy {
     const KIND: Kind;
 }
 
-impl Element for u8 {
+unsafe impl Element for u8 {
     const KIND: Kind = Kind::Uint8;
 }
 
-impl Element for i8 {
+unsafe impl Element for i8 {
     const KIND: Kind = Kind::Int8;
 }
 
-impl Element for i16 {
+unsafe impl Element for i16 {
     const KIND: Kind = Kind::Int16;
 }
 
-impl Element for i32 {
+unsafe impl Element for i32 {
     const KIND: Kind = Kind::Int;
 }
 
-impl Element for i64 {
+unsafe impl Element for i64 {
     const KIND: Kind = Kind::Int64;
 }
 
-impl Element for f16 {
+unsafe impl Element for f16 {
     const KIND: Kind = Kind::Half;
 }
 
-impl Element for f32 {
+unsafe impl Element for f32 {
     const KIND: Kind = Kind::Float;
 }
 
-impl Element for f64 {
+unsafe impl Element for f64 {
     const KIND: Kind = Kind::Double;
 }
 
-impl Element for bool {
+unsafe impl Element for bool {
     const KIND: Kind = Kind::Bool;
 }
