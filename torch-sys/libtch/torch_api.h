@@ -132,6 +132,8 @@ void ato_set_weight_decay_group(optimizer t, size_t group, double weight_decay);
 void ato_zero_grad(optimizer);
 void ato_step(optimizer);
 void ato_free(optimizer);
+void ato_save(optimizer, char *filename);
+void ato_load(optimizer, char *filename);
 
 scalar ats_int(int64_t);
 scalar ats_float(double);

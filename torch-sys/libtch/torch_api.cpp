@@ -745,6 +745,14 @@ void ato_free(optimizer t) {
   delete(t);
 }
 
+void ato_load(optimizer t, char *filename) {
+  PROTECT(torch::load(*t, filename);)
+}
+
+void ato_save(optimizer t, char *filename) {
+  PROTECT(torch::save(*t, filename);)
+}
+
 scalar ats_int(int64_t v) {
   PROTECT(return new torch::Scalar(v);)
   return nullptr;

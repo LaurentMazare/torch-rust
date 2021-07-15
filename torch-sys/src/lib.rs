@@ -158,6 +158,8 @@ extern "C" {
     pub fn ato_zero_grad(arg: *mut C_optimizer);
     pub fn ato_step(arg: *mut C_optimizer);
     pub fn ato_free(arg: *mut C_optimizer);
+    pub fn ato_load(arg: *mut C_optimizer, filename: *const c_char);
+    pub fn ato_save(arg: *mut C_optimizer, filename: *const c_char);
 }
 
 extern "C" {

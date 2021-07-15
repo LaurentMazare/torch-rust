@@ -228,6 +228,16 @@ impl<T> Optimizer<T> {
         self.opt.step().unwrap()
     }
 
+    /// Loads the optimizer state values from a file.
+    pub fn load<P: AsRef<std::path::Path>>(&mut self, path: P) -> Result<(), TchError> {
+        self.opt.load(path)
+    }
+
+    /// Saves the optimizer state values to a file.
+    pub fn save<P: AsRef<std::path::Path>>(&self, path: P) -> Result<(), TchError> {
+        self.opt.save(path)
+    }
+
     /// Applies a backward step pass, update the gradients, and performs an optimization step.
     pub fn backward_step(&mut self, loss: &Tensor) {
         self.add_missing_variables();

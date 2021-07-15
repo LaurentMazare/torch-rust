@@ -1,4 +1,5 @@
 use super::tensor::Tensor;
+use super::utils::path_to_cstring;
 use crate::TchError;
 
 pub struct COptimizer {
@@ -118,6 +119,18 @@ impl COptimizer {
 
     pub fn step(&self) -> Result<(), TchError> {
         unsafe_torch_err!(torch_sys::ato_step(self.c_optimizer));
+        Ok(())
+    }
+
+    pub fn load<T: AsRef<std::path::Path>>(&mut self, path: T) -> Result<(), TchError> {
+        let path = path_to_cstring(path)?;
+        unsafe_torch_err!(torch_sys::ato_load(self.c_optimizer, path.as_ptr()));
+        Ok(())
+    }
+
+    pub fn save<T: AsRef<std::path::Path>>(&self, path: T) -> Result<(), TchError> {
+        let path = path_to_cstring(path)?;
+        unsafe_torch_err!(torch_sys::ato_save(self.c_optimizer, path.as_ptr()));
         Ok(())
     }
 }
