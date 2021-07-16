@@ -34,7 +34,7 @@ impl Iter2 {
     /// * `xs` - the features to be used by the model.
     /// * `ys` - the targets that the model attempts to predict.
     /// * `batch_size` - the size of batches to be returned.
-    pub fn f_new(xs: &Tensor, ys: &Tensor, batch_size: i64) -> Result<Iter2, TchError> {
+    pub fn f_new(xs: &Tensor, ys: &Tensor, batch_size: i64) -> Result<Self, TchError> {
         let total_size = xs.size()[0];
         if ys.size()[0] != total_size {
             return Err(TchError::Shape(format!(
@@ -42,7 +42,7 @@ impl Iter2 {
                 xs, ys
             )));
         }
-        Ok(Iter2 {
+        Ok(Self {
             xs: xs.shallow_clone(),
             ys: ys.shallow_clone(),
             batch_index: 0,
@@ -65,15 +65,15 @@ impl Iter2 {
     /// * `xs` - the features to be used by the model.
     /// * `ys` - the targets that the model attempts to predict.
     /// * `batch_size` - the size of batches to be returned.
-    pub fn new(xs: &Tensor, ys: &Tensor, batch_size: i64) -> Iter2 {
-        Iter2::f_new(xs, ys, batch_size).unwrap()
+    pub fn new(xs: &Tensor, ys: &Tensor, batch_size: i64) -> Self {
+        Self::f_new(xs, ys, batch_size).unwrap()
     }
 
     /// Shuffles the dataset.
     ///
     /// The iterator would still run over the whole dataset but the order in
     /// which elements are grouped in mini-batches is randomized.
-    pub fn shuffle(&mut self) -> &mut Iter2 {
+    pub fn shuffle(&mut self) -> &mut Self {
         let index = Tensor::randperm(self.total_size, kind::INT64_CPU);
         self.xs = self.xs.index_select(0, &index);
         self.ys = self.ys.index_select(0, &index);
@@ -82,13 +82,13 @@ impl Iter2 {
 
     /// Transfers the mini-batches to a specified device.
     #[allow(clippy::wrong_self_convention)]
-    pub fn to_device(&mut self, device: Device) -> &mut Iter2 {
+    pub fn to_device(&mut self, device: Device) -> &mut Self {
         self.device = device;
         self
     }
 
     /// When set, returns the last batch even if smaller than the batch size.
-    pub fn return_smaller_last_batch(&mut self) -> &mut Iter2 {
+    pub fn return_smaller_last_batch(&mut self) -> &mut Self {
         self.return_smaller_last_batch = true;
         self
     }

@@ -38,7 +38,7 @@ impl Encoder {
         let hidden_dim = hidden_dim as i64;
         let gru = nn::gru(&vs, hidden_dim, hidden_dim, Default::default());
         let embedding = nn::embedding(&vs, in_dim, hidden_dim, Default::default());
-        Encoder { embedding, gru }
+        Self { embedding, gru }
     }
 
     fn forward(&self, xs: &Tensor, state: &GRUState) -> (Tensor, GRUState) {
@@ -61,7 +61,7 @@ impl Decoder {
     fn new(vs: nn::Path, hidden_dim: usize, out_dim: usize) -> Self {
         let hidden_dim = hidden_dim as i64;
         let out_dim = out_dim as i64;
-        Decoder {
+        Self {
             device: vs.device(),
             embedding: nn::embedding(&vs, out_dim, hidden_dim, Default::default()),
             gru: nn::gru(&vs, hidden_dim, hidden_dim, Default::default()),
@@ -119,7 +119,7 @@ struct Model {
 
 impl Model {
     fn new(vs: nn::Path, ilang: &Lang, olang: &Lang, hidden_dim: usize) -> Self {
-        Model {
+        Self {
             encoder: Encoder::new(&vs / "enc", ilang.len(), hidden_dim),
             decoder: Decoder::new(&vs / "dec", hidden_dim, olang.len()),
             decoder_start: Tensor::of_slice(&[olang.sos_token() as i64]).to_device(vs.device()),
@@ -192,8 +192,8 @@ struct LossStats {
 }
 
 impl LossStats {
-    fn new() -> LossStats {
-        LossStats {
+    fn new() -> Self {
+        Self {
             total_loss: 0.,
             samples: 0,
         }

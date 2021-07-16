@@ -46,8 +46,8 @@ struct FrameStack {
 }
 
 impl FrameStack {
-    fn new(nprocs: i64, nstack: i64) -> FrameStack {
-        FrameStack {
+    fn new(nprocs: i64, nstack: i64) -> Self {
+        Self {
             data: Tensor::zeros(&[nprocs, nstack, 84, 84], FLOAT_CPU),
             nprocs,
             nstack,

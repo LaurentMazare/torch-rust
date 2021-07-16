@@ -24,7 +24,7 @@ struct VAE {
 
 impl VAE {
     fn new(vs: &nn::Path) -> Self {
-        VAE {
+        Self {
             fc1: nn::linear(vs / "fc1", 784, 400, Default::default()),
             fc21: nn::linear(vs / "fc21", 400, 20, Default::default()),
             fc22: nn::linear(vs / "fc22", 400, 20, Default::default()),

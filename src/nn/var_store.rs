@@ -51,12 +51,12 @@ pub struct Entry<'a> {
 
 impl VarStore {
     /// Creates a new var-store located on the specified device.
-    pub fn new(device: Device) -> VarStore {
+    pub fn new(device: Device) -> Self {
         let variables = Variables {
             named_variables: HashMap::new(),
             trainable_variables: Vec::new(),
         };
-        VarStore {
+        Self {
             variables_: Arc::new(Mutex::new(variables)),
             device,
         }

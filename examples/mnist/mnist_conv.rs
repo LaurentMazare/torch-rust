@@ -12,12 +12,12 @@ struct Net {
 }
 
 impl Net {
-    fn new(vs: &nn::Path) -> Net {
+    fn new(vs: &nn::Path) -> Self {
         let conv1 = nn::conv2d(vs, 1, 32, 5, Default::default());
         let conv2 = nn::conv2d(vs, 32, 64, 5, Default::default());
         let fc1 = nn::linear(vs, 1024, 1024, Default::default());
         let fc2 = nn::linear(vs, 1024, 10, Default::default());
-        Net {
+        Self {
             conv1,
             conv2,
             fc1,

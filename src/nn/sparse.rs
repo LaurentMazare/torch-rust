@@ -13,7 +13,7 @@ pub struct EmbeddingConfig {
 
 impl Default for EmbeddingConfig {
     fn default() -> Self {
-        EmbeddingConfig {
+        Self {
             sparse: false,
             scale_grad_by_freq: false,
             ws_init: super::Init::Randn {

@@ -46,8 +46,8 @@ struct Accumulator {
 }
 
 impl Accumulator {
-    fn new() -> Accumulator {
-        Accumulator {
+    fn new() -> Self {
+        Self {
             block_type: None,
             parameters: BTreeMap::new(),
             net: Darknet {

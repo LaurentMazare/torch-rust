@@ -62,7 +62,7 @@ pub struct RNNConfig {
 
 impl Default for RNNConfig {
     fn default() -> Self {
-        RNNConfig {
+        Self {
             has_biases: true,
             num_layers: 1,
             dropout: 0.,

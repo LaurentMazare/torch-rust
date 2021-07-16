@@ -14,7 +14,7 @@ pub struct BatchNormConfig {
 
 impl Default for BatchNormConfig {
     fn default() -> Self {
-        BatchNormConfig {
+        Self {
             cudnn_enabled: true,
             eps: 1e-5,
             momentum: 0.1,

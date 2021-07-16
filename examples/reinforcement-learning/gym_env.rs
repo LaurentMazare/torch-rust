@@ -32,7 +32,7 @@ pub struct GymEnv {
 
 impl GymEnv {
     /// Creates a new session of the specified OpenAI Gym environment.
-    pub fn new(name: &str) -> PyResult<GymEnv> {
+    pub fn new(name: &str) -> PyResult<Self> {
         let gil = Python::acquire_gil();
         let py = gil.python();
         let gym = py.import("gym")?;
@@ -47,7 +47,7 @@ impl GymEnv {
         };
         let observation_space = env.getattr(py, "observation_space")?;
         let observation_space = observation_space.getattr(py, "shape")?.extract(py)?;
-        Ok(GymEnv {
+        Ok(Self {
             env,
             action_space,
             observation_space,

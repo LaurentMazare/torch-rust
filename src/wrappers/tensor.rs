@@ -27,9 +27,9 @@ pub extern "C" fn add_callback(data: *mut c_void, name: *const c_char, c_tensor:
 
 impl Tensor {
     /// Creates a new tensor.
-    pub fn new() -> Tensor {
+    pub fn new() -> Self {
         let c_tensor = unsafe_torch!(at_new_tensor());
-        Tensor { c_tensor }
+        Self { c_tensor }
     }
 
     /// Creates a new tensor from the pointer to an existing C++ tensor.

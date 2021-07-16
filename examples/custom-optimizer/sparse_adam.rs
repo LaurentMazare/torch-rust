@@ -10,8 +10,8 @@ struct Buffer {
 }
 
 impl Buffer {
-    pub fn new(size: &[i64]) -> Buffer {
-        Buffer {
+    pub fn new(size: &[i64]) -> Self {
+        Self {
             first_moment: Tensor::zeros(size, (Kind::Float, Device::Cpu)),
             second_moment: Tensor::zeros(size, (Kind::Float, Device::Cpu)),
             idx: 1,
@@ -50,7 +50,7 @@ impl SparseAdam {
         beta2: f64,
         eps: f64,
         force_sparse: bool,
-    ) -> SparseAdam {
+    ) -> Self {
         let vars = vs.variables_.clone();
 
         // create buffers for every trainable variable
@@ -62,7 +62,7 @@ impl SparseAdam {
             .map(|x| Buffer::new(&x.tensor.size()))
             .collect();
 
-        SparseAdam {
+            Self {
             lr,
             beta1,
             beta2,

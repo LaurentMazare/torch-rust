@@ -47,7 +47,7 @@ pub struct Sgd {
 
 impl Default for Sgd {
     fn default() -> Self {
-        Sgd {
+        Self {
             momentum: 0.,
             dampening: 0.,
             wd: 0.,
@@ -82,7 +82,7 @@ pub struct Adam {
 
 impl Default for Adam {
     fn default() -> Self {
-        Adam {
+        Self {
             beta1: 0.9,
             beta2: 0.999,
             wd: 0.,
@@ -111,7 +111,7 @@ pub struct AdamW {
 
 impl Default for AdamW {
     fn default() -> Self {
-        AdamW {
+        Self {
             beta1: 0.9,
             beta2: 0.999,
             wd: 0.01,
@@ -142,7 +142,7 @@ pub struct RmsProp {
 
 impl Default for RmsProp {
     fn default() -> Self {
-        RmsProp {
+        Self {
             alpha: 0.99,
             eps: 1e-8,
             wd: 0.,

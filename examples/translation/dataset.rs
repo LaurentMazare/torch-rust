@@ -79,7 +79,7 @@ fn read_pairs(ilang: &str, olang: &str, max_length: usize) -> Result<Vec<(String
 }
 
 impl Dataset {
-    pub fn new(ilang: &str, olang: &str, max_length: usize) -> Result<Dataset> {
+    pub fn new(ilang: &str, olang: &str, max_length: usize) -> Result<Self> {
         let pairs = read_pairs(ilang, olang, max_length)?;
         let mut input_lang = lang::Lang::new(ilang);
         let mut output_lang = lang::Lang::new(olang);
@@ -87,7 +87,7 @@ impl Dataset {
             input_lang.add_sentence(&lhs);
             output_lang.add_sentence(&rhs);
         }
-        let dataset = Dataset {
+        let dataset = Self {
             input_lang,
             output_lang,
             pairs,

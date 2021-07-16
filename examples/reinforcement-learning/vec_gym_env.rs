@@ -16,7 +16,7 @@ pub struct VecGymEnv {
 }
 
 impl VecGymEnv {
-    pub fn new(name: &str, img_dir: Option<&str>, nprocesses: i64) -> PyResult<VecGymEnv> {
+    pub fn new(name: &str, img_dir: Option<&str>, nprocesses: i64) -> PyResult<Self> {
         let gil = Python::acquire_gil();
         let py = gil.python();
         let sys = py.import("sys")?;
@@ -30,7 +30,7 @@ impl VecGymEnv {
         let observation_space: Vec<i64> = observation_space.getattr(py, "shape")?.extract(py)?;
         let observation_space =
             [vec![nprocesses].as_slice(), observation_space.as_slice()].concat();
-        Ok(VecGymEnv {
+        Ok(Self {
             env,
             action_space,
             observation_space,

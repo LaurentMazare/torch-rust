@@ -14,7 +14,7 @@ pub struct LayerNormConfig {
 
 impl Default for LayerNormConfig {
     fn default() -> Self {
-        LayerNormConfig {
+        Self {
             cudnn_enabled: true,
             eps: 1e-5,
             elementwise_affine: true,

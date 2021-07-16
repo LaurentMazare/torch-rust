@@ -21,7 +21,7 @@ pub type ConvConfig = ConvConfigND<i64>;
 
 impl Default for ConvConfig {
     fn default() -> Self {
-        ConvConfig {
+        Self {
             stride: 1,
             padding: 0,
             dilation: 1,
@@ -35,7 +35,7 @@ impl Default for ConvConfig {
 
 impl Default for ConvConfigND<[i64; 2]> {
     fn default() -> Self {
-        ConvConfigND::<[i64; 2]> {
+        Self {
             stride: [1, 1],
             padding: [0, 0],
             dilation: [1, 1],
