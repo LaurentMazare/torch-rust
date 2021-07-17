@@ -20,6 +20,9 @@ anyhow = "1.0"
 cc = "1.0"
 curl = "0.4.9"
 zip = "0.5"
+normpath="0.3.0"
+verbatim="0.1.1"
+cfg-if="1.0.0"
 
 [features]
 doc-only = []
