@@ -8,8 +8,8 @@ pub struct BatchNormConfig {
     pub cudnn_enabled: bool,
     pub eps: f64,
     pub momentum: f64,
-    pub ws_init: super::Init,
-    pub bs_init: super::Init,
+    pub ws_init: Option<super::Init>,
+    pub bs_init: Option<super::Init>,
 }
 
 impl Default for BatchNormConfig {
@@ -18,8 +18,8 @@ impl Default for BatchNormConfig {
             cudnn_enabled: true,
             eps: 1e-5,
             momentum: 0.1,
-            ws_init: super::Init::Uniform { lo: 0., up: 1. },
-            bs_init: super::Init::Const(0.),
+            ws_init: Some(super::Init::Const(1.)),
+            bs_init: Some(super::Init::Const(0.)),
         }
     }
 }
@@ -30,8 +30,8 @@ pub struct BatchNorm {
     config: BatchNormConfig,
     pub running_mean: Tensor,
     pub running_var: Tensor,
-    pub ws: Tensor,
-    pub bs: Tensor,
+    pub ws: Option<Tensor>,
+    pub bs: Option<Tensor>,
     pub nd: usize,
 }
 
@@ -46,8 +46,12 @@ fn batch_norm<'a, T: Borrow<super::Path<'a>>>(
         config,
         running_mean: vs.zeros_no_train("running_mean", &[out_dim]),
         running_var: vs.ones_no_train("running_var", &[out_dim]),
-        ws: vs.var("weight", &[out_dim], config.ws_init),
-        bs: vs.var("bias", &[out_dim], config.bs_init),
+        ws: config
+            .ws_init
+            .map(|ws_init| vs.var("weight", &[out_dim], ws_init)),
+        bs: config
+            .bs_init
+            .map(|bs_init| vs.var("bias", &[out_dim], bs_init)),
         nd,
     }
 }
@@ -106,8 +110,8 @@ impl super::module::ModuleT for BatchNorm {
         };
         Tensor::batch_norm(
             xs,
-            Some(&self.ws),
-            Some(&self.bs),
+            self.ws.as_ref(),
+            self.bs.as_ref(),
             Some(&self.running_mean),
             Some(&self.running_var),
             train,
