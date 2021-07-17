@@ -28,6 +28,7 @@ extern "C" {
     pub fn at_is_sparse(arg: *mut C_tensor) -> c_int;
     pub fn at_is_mkldnn(arg: *mut C_tensor) -> c_int;
     pub fn at_backward(arg: *mut C_tensor, keep_graph: c_int, create_graph: c_int);
+    pub fn at_backward_with_grad(arg: *mut C_tensor, grad: *mut C_tensor, keep_graph: c_int, create_graph: c_int);
     pub fn at_print(arg: *mut C_tensor);
     pub fn at_to_string(arg: *mut C_tensor, line_size: c_int) -> *mut c_char;
     pub fn at_dim(arg: *mut C_tensor) -> size_t;

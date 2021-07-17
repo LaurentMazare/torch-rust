@@ -52,6 +52,7 @@ bool at_autocast_is_enabled();
 bool at_autocast_set_enabled(bool b);
 
 void at_backward(tensor, int, int);
+void at_backward_with_grad(tensor, tensor, int, int);
 int at_requires_grad(tensor);
 int at_grad_set_enabled(int);
 
